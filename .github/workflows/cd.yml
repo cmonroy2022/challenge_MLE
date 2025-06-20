@@ -26,6 +26,11 @@ jobs:
       run: |
         python -m pytest --cov-config=.coveragerc --cov-report term --cov-report html:reports/html --cov-report xml:reports/coverage.xml --junitxml=reports/junit.xml --cov=challenge tests/model
         python -m pytest --cov-config=.coveragerc --cov-report term --cov-report html:reports/html --cov-report xml:reports/coverage.xml --junitxml=reports/junit.xml --cov=challenge tests/api
+      
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: '${{ secrets.GCP_SA_KEY }}'
         
     - name: Setup Google Cloud CLI
       uses: google-github-actions/setup-gcloud@v2
@@ -98,7 +103,5 @@ jobs:
     - name: Notify deployment failure
       if: failure()
       run: |
-        echo "❌ Deployment failed!"
-        echo "Check the logs above for details" 
         echo "❌ Deployment failed!"
         echo "Check the logs above for details" 

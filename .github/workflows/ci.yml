@@ -78,7 +78,7 @@ jobs:
     - name: Install dependencies
       run: |
         pip install flake8 black isort
-        pip install "black[jupyter]
+        pip install black[jupyter]
         
     - name: Run linting
       run: |

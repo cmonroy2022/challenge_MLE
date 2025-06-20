@@ -79,10 +79,12 @@ jobs:
       run: |
         pip install flake8 black isort
         pip install "black[jupyter]"
+        pip install isort
 
-    - name: Autoformat with black
+    - name: Autoformat with black and Auto-fix import order
       run: |
         black challenge/
+        isort challenge/
         
     - name: Run linting
       run: |

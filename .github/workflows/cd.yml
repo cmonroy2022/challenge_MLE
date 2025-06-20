@@ -26,11 +26,7 @@ jobs:
       run: |
         python -m pytest --cov-config=.coveragerc --cov-report term --cov-report html:reports/html --cov-report xml:reports/coverage.xml --junitxml=reports/junit.xml --cov=challenge tests/model
         python -m pytest --cov-config=.coveragerc --cov-report term --cov-report html:reports/html --cov-report xml:reports/coverage.xml --junitxml=reports/junit.xml --cov=challenge tests/api
-    
-    - name: Authenticate to Google Cloud
-      uses: google-github-actions/auth@v1
-      with:
-        credentials_json: ${{ secrets.GCP_SA_KEY }}
+        
     - name: Setup Google Cloud CLI
       uses: google-github-actions/setup-gcloud@v1
       with:
@@ -38,18 +34,32 @@ jobs:
         service_account_key: ${{ secrets.GCP_SA_KEY }}
         export_default_credentials: true
         
-    - name: Configure Docker for GCR
-      run: gcloud auth configure-docker
+    - name: Enable required APIs
+      run: |
+        gcloud services enable artifactregistry.googleapis.com
+        gcloud services enable run.googleapis.com
+        gcloud services enable cloudbuild.googleapis.com
+        
+    - name: Create Artifact Registry repository
+      run: |
+        gcloud artifacts repositories create flight-delay-repo \
+          --repository-format=docker \
+          --location=us-central1 \
+          --description="Flight Delay API Repository" \
+          --quiet || echo "Repository already exists"
+        
+    - name: Configure Docker for Artifact Registry
+      run: gcloud auth configure-docker us-central1-docker.pkg.dev
       
     - name: Build and push Docker image
       run: |
-        docker build -t gcr.io/${{ secrets.GCP_PROJECT_ID }}/flight-delay-api:${{ github.sha }} .
-        docker push gcr.io/${{ secrets.GCP_PROJECT_ID }}/flight-delay-api:${{ github.sha }}
+        docker build -t us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/flight-delay-repo/flight-delay-api:${{ github.sha }} .
+        docker push us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/flight-delay-repo/flight-delay-api:${{ github.sha }}
         
     - name: Deploy to Cloud Run
       run: |
         gcloud run deploy flight-delay-api \
-          --image gcr.io/${{ secrets.GCP_PROJECT_ID }}/flight-delay-api:${{ github.sha }} \
+          --image us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/flight-delay-repo/flight-delay-api:${{ github.sha }} \
           --region us-central1 \
           --platform managed \
           --allow-unauthenticated \
@@ -73,7 +83,7 @@ jobs:
         python -m locust -f tests/stress/api_stress.py --print-stats --html reports/stress-test.html --run-time 60s --headless --users 100 --spawn-rate 1 -H ${{ steps.get-url.outputs.service_url }}
         
     - name: Upload stress test results
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v3
       with:
         name: stress-test-results
         path: reports/stress-test.html
@@ -88,5 +98,7 @@ jobs:
     - name: Notify deployment failure
       if: failure()
       run: |
+        echo "❌ Deployment failed!"
+        echo "Check the logs above for details" 
         echo "❌ Deployment failed!"
         echo "Check the logs above for details" 

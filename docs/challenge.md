@@ -609,3 +609,258 @@ docker run --rm test-image ls -la /app/data/
 - Monitoreo configurado
 - Costos optimizados
 - Seguridad implementada
+
+---
+
+## Parte IV: Implementación de CI/CD con GitHub Actions
+
+### Descripción General
+
+La Parte IV consiste en implementar un pipeline completo de Integración Continua (CI) y Entrega Continua (CD) utilizando GitHub Actions. El objetivo es automatizar el testing, linting, seguridad y despliegue de la aplicación.
+
+### Arquitectura CI/CD
+
+**Plataforma:** GitHub Actions
+**Estructura:** `.github/workflows/`
+- `ci.yml` - Integración Continua
+- `cd.yml` - Entrega Continua
+
+### Workflow de Integración Continua (CI)
+
+**Trigger:** Push a `main`, `develop` y Pull Requests
+
+**Jobs implementados:**
+
+#### 1. Test Model (`test-model`)
+- Ejecuta tests del modelo
+- Genera reportes de cobertura
+- Sube métricas a Codecov
+
+#### 2. Test API (`test-api`)
+- Ejecuta tests de la API
+- Genera reportes de cobertura
+- Sube métricas a Codecov
+
+#### 3. Linting (`lint`)
+- Verifica estilo de código con flake8
+- Formatea código con black
+- Organiza imports con isort
+
+#### 4. Security (`security`)
+- Análisis de seguridad con bandit
+- Verificación de dependencias con safety
+- Genera reportes de seguridad
+
+### Workflow de Entrega Continua (CD)
+
+**Trigger:** Push a `main` (solo)
+
+**Proceso completo:**
+
+#### 1. Pre-deployment Testing
+- Ejecuta todos los tests (modelo + API)
+- Verifica que todo funcione antes del despliegue
+
+#### 2. Google Cloud Setup
+- Configura Google Cloud CLI
+- Autentica con Container Registry
+
+#### 3. Build y Push
+- Construye imagen Docker
+- Sube a Google Container Registry
+- Tag con SHA del commit
+
+#### 4. Deploy a Cloud Run
+- Despliega en Google Cloud Run
+- Configura recursos (1Gi RAM, 1 CPU)
+- Habilita acceso público
+
+#### 5. Post-deployment
+- Obtiene URL del servicio
+- Actualiza Makefile automáticamente
+- Ejecuta tests de stress
+- Sube resultados como artifacts
+
+### Configuración de Herramientas
+
+#### Flake8 (`.flake8`)
+```ini
+[flake8]
+max-line-length = 88
+extend-ignore = E203, W503
+exclude = .git,__pycache__,.venv,venv,.pytest_cache,reports,docs,tests
+per-file-ignores = __init__.py:F401
+```
+
+#### Black (pyproject.toml)
+```toml
+[tool.black]
+line-length = 88
+target-version = ['py39']
+include = '\.pyi?$'
+```
+
+#### Isort (pyproject.toml)
+```toml
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+known_first_party = ["challenge"]
+```
+
+#### Bandit (`.bandit`)
+```yaml
+exclude_dirs: ['tests', 'docs', 'reports']
+skips: ['B101', 'B601']
+```
+
+### Secrets Requeridos
+
+**Configurar en GitHub Repository Settings > Secrets:**
+
+1. **GCP_PROJECT_ID**
+   - ID del proyecto de Google Cloud
+   - Ejemplo: `challengemle-463423`
+
+2. **GCP_SA_KEY**
+   - Clave JSON de la Service Account
+   - Debe tener permisos de Cloud Run Admin y Storage Admin
+
+### Configuración de Service Account
+
+**Permisos mínimos requeridos:**
+```bash
+# Crear Service Account
+gcloud iam service-accounts create github-actions \
+  --display-name="GitHub Actions"
+
+# Asignar roles
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+  --member="serviceAccount:github-actions@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/run.admin"
+
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+  --member="serviceAccount:github-actions@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/storage.admin"
+
+# Crear y descargar clave
+gcloud iam service-accounts keys create key.json \
+  --iam-account=github-actions@YOUR_PROJECT_ID.iam.gserviceaccount.com
+```
+
+### Flujo de Trabajo
+
+#### Desarrollo Local
+```bash
+# Instalar dependencias de desarrollo
+pip install -r requirements-dev.txt
+
+# Ejecutar linting
+flake8 challenge/
+black --check challenge/
+isort --check-only challenge/
+
+# Ejecutar tests
+pytest tests/model/
+pytest tests/api/
+
+# Ejecutar seguridad
+bandit -r challenge/
+safety check
+```
+
+#### Pipeline Automatizado
+1. **Push a develop:** Solo CI (tests, linting, seguridad)
+2. **Pull Request:** Solo CI (tests, linting, seguridad)
+3. **Push a main:** CI + CD (tests, linting, seguridad, despliegue)
+
+### Monitoreo y Reportes
+
+#### Cobertura de Código
+- **Codecov:** Métricas automáticas de cobertura
+- **Flags:** Separación por modelo y API
+- **Threshold:** Mínimo 90% de cobertura
+
+#### Tests de Stress
+- **Locust:** 100 usuarios, 60 segundos
+- **Artifacts:** Reporte HTML subido automáticamente
+- **Threshold:** Máximo 2% de errores
+
+#### Seguridad
+- **Bandit:** Análisis de vulnerabilidades en código
+- **Safety:** Verificación de dependencias vulnerables
+- **Reportes:** JSON generados automáticamente
+
+### Configuración de Entorno
+
+#### Python Version
+- **Versión:** 3.9 (compatible con todas las dependencias)
+- **Runner:** ubuntu-latest
+
+#### Dependencias
+```bash
+# requirements-dev.txt actualizado
+pytest
+pytest-cov
+flake8
+black
+isort
+bandit
+safety
+locust
+```
+
+### Rollback Automático
+
+**En caso de fallo en CD:**
+1. Tests fallan → No se despliega
+2. Build falla → No se despliega
+3. Deploy falla → Notificación automática
+4. Stress tests fallan → Notificación automática
+
+### Notificaciones
+
+**Éxito:**
+- ✅ Deployment successful
+- 🌐 Service URL mostrada
+- 📊 Stress tests completed
+
+**Fallo:**
+- ❌ Deployment failed
+- 🔍 Logs detallados disponibles
+- 📧 Notificación automática
+
+### Optimizaciones Implementadas
+
+#### Caching
+- **Dependencies:** Cache de pip entre runs
+- **Docker layers:** Cache de capas de Docker
+- **Test results:** Cache de resultados de pytest
+
+#### Paralelización
+- **Jobs independientes:** test-model, test-api, lint, security
+- **Matrices:** Tests en múltiples versiones de Python (futuro)
+
+#### Timeouts
+- **Job timeout:** 30 minutos máximo
+- **Step timeout:** 10 minutos máximo
+- **Test timeout:** 5 minutos máximo
+
+### Estado Final de la Parte IV
+
+**✅ Objetivos cumplidos:**
+- Pipeline CI/CD completo implementado
+- Tests automatizados en cada push/PR
+- Linting y seguridad automatizados
+- Despliegue automático en GCP
+- Tests de stress post-deployment
+- Reportes de cobertura y calidad
+- Rollback automático en caso de fallos
+
+**🚀 Pipeline de producción:**
+- Integración continua robusta
+- Entrega continua automatizada
+- Monitoreo completo de calidad
+- Seguridad integrada
+- Escalabilidad automática

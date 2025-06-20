@@ -1,0 +1,2 @@
+exclude_dirs: ['tests', 'docs', 'reports']
+skips: ['B101', 'B601'] 
